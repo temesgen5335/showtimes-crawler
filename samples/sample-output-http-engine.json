@@ -1,0 +1,32 @@
+{
+    "id": "1",
+    "url": "https://www.wikipedia.org",
+    "state": "completed",
+    "progress": 100,
+    "attemptsMade": 1,
+    "createdAt": "2026-07-04T09:31:12.070Z",
+    "processedAt": "2026-07-04T09:31:12.081Z",
+    "finishedAt": "2026-07-04T09:31:12.986Z",
+    "result": {
+        "requestedUrl": "https://www.wikipedia.org",
+        "finalUrl": "https://www.wikipedia.org/",
+        "statusCode": 200,
+        "fetchedWith": "http",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "proxy": null,
+        "title": "Wikipedia",
+        "metaDescription": "Wikipedia is a free online encyclopedia, created and edited by volunteers around the world and hosted by the Wikimedia Foundation.",
+        "favicon": "https://www.wikipedia.org/static/favicon/wikipedia.ico",
+        "scripts": [
+            "https://www.wikipedia.org/portal/wikipedia.org/assets/js/index-34f340e24a.js",
+            "https://www.wikipedia.org/portal/wikipedia.org/assets/js/gt-ie9-507b16b6be.js"
+        ],
+        "stylesheets": [],
+        "images": [
+            "https://www.wikipedia.org/portal/wikipedia.org/assets/img/Wikipedia-logo-v2.png"
+        ],
+        "fetchedAt": "2026-07-04T09:31:12.083Z",
+        "durationMs": 903
+    },
+    "failedReason": null
+}

@@ -1,0 +1,27 @@
+{
+    "id": "2",
+    "url": "https://example.com",
+    "state": "completed",
+    "progress": 100,
+    "attemptsMade": 1,
+    "createdAt": "2026-07-04T09:31:50.847Z",
+    "processedAt": "2026-07-04T09:31:50.852Z",
+    "finishedAt": "2026-07-04T09:31:57.221Z",
+    "result": {
+        "requestedUrl": "https://example.com",
+        "finalUrl": "https://example.com/",
+        "statusCode": 200,
+        "fetchedWith": "browser",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "proxy": null,
+        "title": "Example Domain",
+        "metaDescription": null,
+        "favicon": "https://example.com/favicon.ico",
+        "scripts": [],
+        "stylesheets": [],
+        "images": [],
+        "fetchedAt": "2026-07-04T09:31:50.855Z",
+        "durationMs": 6366
+    },
+    "failedReason": null
+}
