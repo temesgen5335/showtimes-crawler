@@ -30,8 +30,11 @@ cp .env.example .env
 npm run start:dev
 ```
 
-The API is now on `http://localhost:3000` and the interactive Swagger UI on
-**`http://localhost:3000/docs`**.
+The app now exposes three surfaces:
+
+- REST API — `http://localhost:3000`
+- **Swagger UI** — `http://localhost:3000/docs` (interactive API docs; drive every endpoint from the browser)
+- **Queue dashboard (Bull Board)** — `http://localhost:3000/admin/queues` (inspect jobs, their data, results and errors live)
 
 ```bash
 # run the test suite (no network or Redis required — everything is mocked)
@@ -93,6 +96,16 @@ curl -X DELETE http://localhost:3000/cancel/1
 ```
 
 Real sample responses for both engines are in [`samples/`](./samples).
+
+### Watching the queue (Bull Board)
+
+For a visual view of the queue, open **`http://localhost:3000/admin/queues`**.
+Bull Board is the standard BullMQ dashboard: it lists every job by state
+(waiting / active / completed / failed), and lets you drill into a job to see
+its input URL, the extracted result and — for failures — the error and retry
+count. It's read-only and requires no extra services (it reads the same Redis
+the worker uses), so it's a zero-cost way to demo or debug a crawl. The mount
+point is configurable via `BULL_BOARD_ROUTE`.
 
 ---
 
@@ -287,8 +300,9 @@ scales — here's the honest path from this to that:
    the browser engine + residential proxies. Most of 25k sites don't need a
    browser; you pay for it only where required.
 6. **Observability.** Per-domain success rates, block rates and latency — so you
-   see a site's defenses change before the data silently goes stale. Bull Board
-   gives queue visibility for free.
+   see a site's defenses change before the data silently goes stale. Queue
+   visibility is already wired in via Bull Board (`/admin/queues`); metrics
+   would extend that with per-domain aggregates.
 7. **Extraction config per site.** A generic extractor gets you the metadata
    here; showtime extraction needs per-site selectors/rules. That becomes a
    config-driven layer (selectors in data, not code) so onboarding a site is a

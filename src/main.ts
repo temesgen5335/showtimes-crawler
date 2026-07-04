@@ -25,10 +25,13 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   const port = process.env.PORT ?? 3000;
+  const boardRoute = process.env.BULL_BOARD_ROUTE ?? '/admin/queues';
   await app.listen(port);
   // eslint-disable-next-line no-console
   console.log(
-    `Crawler API listening on http://localhost:${port} (Swagger UI at /docs)`,
+    `Crawler API listening on http://localhost:${port}\n` +
+      `  Swagger UI     → http://localhost:${port}/docs\n` +
+      `  Queue dashboard → http://localhost:${port}${boardRoute}`,
   );
 }
 void bootstrap();

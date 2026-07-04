@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
+import { BullBoardModule } from '@bull-board/nestjs';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { CRAWL_QUEUE } from './crawl.types';
 import { CrawlController } from './crawl.controller';
 import { CrawlService } from './crawl.service';
@@ -25,6 +27,11 @@ import { ProxyRotator } from './anti-blocking/proxy.rotator';
           removeOnFail: { age: 24 * 3600 },
         },
       }),
+    }),
+    // Expose this queue in the Bull Board dashboard (mounted in AppModule).
+    BullBoardModule.forFeature({
+      name: CRAWL_QUEUE,
+      adapter: BullMQAdapter,
     }),
   ],
   controllers: [CrawlController],
