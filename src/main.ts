@@ -1,0 +1,34 @@
+// Load .env before any module decorators are evaluated (the BullMQ worker
+// options in crawl.processor.ts read process.env at decoration time).
+import 'dotenv/config';
+
+import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Crawler API')
+    .setDescription(
+      'Queue-based web crawler. Enqueue a URL, poll its status, cancel it. ' +
+        'Jobs are processed by a BullMQ worker backed by Redis.',
+    )
+    .setVersion('1.0')
+    .addTag('crawl')
+    .build();
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, document);
+
+  const port = process.env.PORT ?? 3000;
+  await app.listen(port);
+  // eslint-disable-next-line no-console
+  console.log(
+    `Crawler API listening on http://localhost:${port} (Swagger UI at /docs)`,
+  );
+}
+void bootstrap();
