@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
 } from '@nestjs/common';
 import {
   ApiConflictResponse,
@@ -19,9 +20,11 @@ import {
 } from '@nestjs/swagger';
 import { CrawlService } from './crawl.service';
 import { CreateCrawlDto } from './dto/create-crawl.dto';
+import { ListCrawlsQueryDto } from './dto/list-crawls.dto';
 import {
   CancelResultDto,
   CrawlEnqueuedDto,
+  CrawlListDto,
   CrawlStatusDto,
 } from './dto/crawl-responses.dto';
 
@@ -40,6 +43,18 @@ export class CrawlController {
   @ApiCreatedResponse({ type: CrawlEnqueuedDto })
   enqueue(@Body() dto: CreateCrawlDto): Promise<CrawlEnqueuedDto> {
     return this.crawlService.enqueue(dto);
+  }
+
+  @Get('crawls')
+  @ApiOperation({
+    summary: 'List recent crawl jobs (history)',
+    description:
+      'Paginated list of crawl jobs held in Redis, most recent first. ' +
+      'Complements GET /status/{id}; bounded by the queue retention window.',
+  })
+  @ApiOkResponse({ type: CrawlListDto })
+  list(@Query() query: ListCrawlsQueryDto): Promise<CrawlListDto> {
+    return this.crawlService.list(query);
   }
 
   @Get('status/:id')

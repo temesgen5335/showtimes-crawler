@@ -8,6 +8,7 @@ describe('CrawlController', () => {
     enqueue: jest.fn(),
     getStatus: jest.fn(),
     cancel: jest.fn(),
+    list: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -37,6 +38,16 @@ describe('CrawlController', () => {
 
     await expect(controller.getStatus('1')).resolves.toEqual(status);
     expect(crawlService.getStatus).toHaveBeenCalledWith('1');
+  });
+
+  it('GET /crawls delegates to the service with the query', async () => {
+    const listing = { page: 1, limit: 20, total: 0, count: 0, items: [] };
+    crawlService.list.mockResolvedValue(listing);
+
+    await expect(controller.list({ page: 1, limit: 20 })).resolves.toEqual(
+      listing,
+    );
+    expect(crawlService.list).toHaveBeenCalledWith({ page: 1, limit: 20 });
   });
 
   it('DELETE /cancel/:id delegates to the service', async () => {

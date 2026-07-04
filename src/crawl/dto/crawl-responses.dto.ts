@@ -90,6 +90,26 @@ export class CrawlStatusDto {
   failedReason!: string | null;
 }
 
+export class CrawlListDto {
+  @ApiProperty({ example: 1, description: '1-based page returned' })
+  page!: number;
+
+  @ApiProperty({ example: 20, description: 'Page size' })
+  limit!: number;
+
+  @ApiProperty({
+    example: 137,
+    description: 'Total jobs across the requested states (within Redis retention)',
+  })
+  total!: number;
+
+  @ApiProperty({ example: 20, description: 'Number of items in this page' })
+  count!: number;
+
+  @ApiProperty({ type: [CrawlStatusDto], description: 'Jobs, most recent first' })
+  items!: CrawlStatusDto[];
+}
+
 export class CancelResultDto {
   @ApiProperty({ example: '1' })
   id!: string;

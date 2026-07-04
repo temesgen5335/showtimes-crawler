@@ -4,12 +4,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { Job, JobState, Queue } from 'bullmq';
 import { CRAWL_QUEUE, CrawlJobData, CrawlResult } from './crawl.types';
 import { CreateCrawlDto } from './dto/create-crawl.dto';
+import { ListCrawlsQueryDto } from './dto/list-crawls.dto';
 import {
   CancelResultDto,
   CrawlEnqueuedDto,
+  CrawlListDto,
   CrawlStatusDto,
 } from './dto/crawl-responses.dto';
 
@@ -31,8 +33,52 @@ export class CrawlService {
   async getStatus(id: string): Promise<CrawlStatusDto> {
     const job = await this.queue.getJob(id);
     if (!job) throw new NotFoundException(`No crawl job with id "${id}"`);
-
     const state = await job.getState();
+    return this.toStatusDto(job, state);
+  }
+
+  /**
+   * Lists crawl jobs currently held in Redis, most recent first — a history
+   * view to complement GET /status/:id. Bounded by the queue's 24h retention;
+   * this is not a durable audit log (that would be a Postgres store — see the
+   * README scale notes). Paginated to keep responses and Redis reads bounded.
+   */
+  async list(query: ListCrawlsQueryDto): Promise<CrawlListDto> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const start = (page - 1) * limit;
+    const end = start + limit - 1;
+
+    // Default to the states that make up "history"; allow narrowing to one.
+    const states: JobState[] = query.state
+      ? [query.state]
+      : ['active', 'waiting', 'delayed', 'completed', 'failed'];
+
+    const counts = await this.queue.getJobCounts(...states);
+    const total = states.reduce((sum, s) => sum + (counts[s] ?? 0), 0);
+
+    // BullMQ's getJobs applies the [start,end] range per state bucket and does
+    // not order across buckets, so we fetch the candidate window (0..end) from
+    // each state, merge, sort newest-first by enqueue time, then slice the
+    // requested page. Bounded by `end`, which is fine within the retention
+    // window; a durable store would paginate this in SQL instead.
+    const jobs = await this.queue.getJobs(states, 0, end);
+    const ordered = jobs
+      .filter((job): job is Job<CrawlJobData, CrawlResult> => Boolean(job))
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(start, start + limit);
+
+    const items = await Promise.all(
+      ordered.map(async (job) => this.toStatusDto(job, await job.getState())),
+    );
+
+    return { page, limit, total, count: items.length, items };
+  }
+
+  private toStatusDto(
+    job: Job<CrawlJobData, CrawlResult>,
+    state: string,
+  ): CrawlStatusDto {
     return {
       id: String(job.id),
       url: job.data.url,

@@ -36,6 +36,8 @@ describe('CrawlService', () => {
   const queue = {
     add: jest.fn(),
     getJob: jest.fn(),
+    getJobs: jest.fn(),
+    getJobCounts: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -65,6 +67,55 @@ describe('CrawlService', () => {
         url: 'https://example.com',
         state: 'waiting',
       });
+    });
+  });
+
+  describe('list', () => {
+    it('orders merged jobs newest-first and respects the page size', async () => {
+      // Returned out of time order and one extra beyond limit=2.
+      const older = makeJob({
+        id: '8',
+        data: { url: 'https://old.com' },
+        timestamp: 1_700_000_001_000,
+      });
+      older.getState.mockResolvedValue('completed');
+      const newest = makeJob({
+        id: '10',
+        data: { url: 'https://new.com' },
+        timestamp: 1_700_000_003_000,
+      });
+      newest.getState.mockResolvedValue('failed');
+      const middle = makeJob({
+        id: '9',
+        data: { url: 'https://mid.com' },
+        timestamp: 1_700_000_002_000,
+      });
+      middle.getState.mockResolvedValue('completed');
+
+      queue.getJobCounts.mockResolvedValue({ completed: 2, failed: 1 });
+      queue.getJobs.mockResolvedValue([older, newest, middle]);
+
+      const result = await service.list({ page: 1, limit: 2 });
+
+      // Fetches the candidate window from index 0, then slices the page.
+      expect(queue.getJobs).toHaveBeenCalledWith(
+        ['active', 'waiting', 'delayed', 'completed', 'failed'],
+        0,
+        1,
+      );
+      expect(result.total).toBe(3);
+      expect(result.count).toBe(2); // never exceeds limit
+      expect(result.items.map((i) => i.id)).toEqual(['10', '9']); // newest-first
+    });
+
+    it('filters to a single state and slices the requested page', async () => {
+      queue.getJobCounts.mockResolvedValue({ failed: 5 });
+      queue.getJobs.mockResolvedValue([]);
+
+      const result = await service.list({ page: 2, limit: 10, state: 'failed' });
+
+      expect(queue.getJobs).toHaveBeenCalledWith(['failed'], 0, 19);
+      expect(result.total).toBe(5);
     });
   });
 
