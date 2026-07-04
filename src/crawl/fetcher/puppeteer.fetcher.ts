@@ -21,7 +21,11 @@ export class PuppeteerFetcher implements PageFetcher {
   private readonly logger = new Logger(PuppeteerFetcher.name);
 
   async fetch(url: string, options: FetchOptions): Promise<FetchedPage> {
-    const args: string[] = [];
+    // Baseline flags for running Chromium in a container: --no-sandbox is
+    // required when running as root (as in Docker/Render), and
+    // --disable-dev-shm-usage avoids crashes from the small /dev/shm that
+    // containers ship with.
+    const args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
     let credentials: { username: string; password: string } | undefined;
 
     if (options.proxyUrl) {
@@ -35,7 +39,14 @@ export class PuppeteerFetcher implements PageFetcher {
       }
     }
 
-    const browser = await puppeteer.launch({ headless: true, args });
+    const browser = await puppeteer.launch({
+      headless: true,
+      args,
+      // In containers we install a system Chromium and point Puppeteer at it
+      // via PUPPETEER_EXECUTABLE_PATH; locally this is unset and Puppeteer
+      // uses its own downloaded build.
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+    });
     try {
       const page = await browser.newPage();
       if (credentials) await page.authenticate(credentials);

@@ -24,9 +24,11 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);
 
-  const port = process.env.PORT ?? 3000;
+  const port = process.env.PORT ?? 3333;
   const boardRoute = process.env.BULL_BOARD_ROUTE ?? '/admin/queues';
-  await app.listen(port);
+  // Bind to 0.0.0.0 so the app is reachable inside containers / on Render,
+  // where the platform injects PORT and routes to the container's interface.
+  await app.listen(port, '0.0.0.0');
   // eslint-disable-next-line no-console
   console.log(
     `Crawler API listening on http://localhost:${port}\n` +

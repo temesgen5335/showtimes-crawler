@@ -14,7 +14,8 @@ crawler; Part 2: proxy/VPN support).
 
 ## Quick start
 
-Requirements: Node.js 20+, Docker (for Redis).
+Requirements: Node.js 20+, Docker (for Redis). Runs locally on port **3333**
+(override with `PORT`). For deploying to Render, see [Deployment](#deployment).
 
 ```bash
 # 1. install dependencies
@@ -32,9 +33,9 @@ npm run start:dev
 
 The app now exposes three surfaces:
 
-- REST API — `http://localhost:3000`
-- **Swagger UI** — `http://localhost:3000/docs` (interactive API docs; drive every endpoint from the browser)
-- **Queue dashboard (Bull Board)** — `http://localhost:3000/admin/queues` (inspect jobs, their data, results and errors live)
+- REST API — `http://localhost:3333`
+- **Swagger UI** — `http://localhost:3333/docs` (interactive API docs; drive every endpoint from the browser)
+- **Queue dashboard (Bull Board)** — `http://localhost:3333/admin/queues` (inspect jobs, their data, results and errors live)
 
 ```bash
 # run the test suite (no network or Redis required — everything is mocked)
@@ -48,12 +49,14 @@ The headless-browser engine downloads a Chromium build on first `npm install`
 
 ## Using the API
 
-Three endpoints, exactly as specified. Full schemas are in Swagger.
+The three endpoints the spec requires — `POST /crawl`, `GET /status/{id}`,
+`DELETE /cancel/{id}` — plus two operational extras (`GET /crawls` history and
+`GET /health`). Full schemas are in Swagger.
 
 **Enqueue a crawl** — returns immediately with a job id.
 
 ```bash
-curl -X POST http://localhost:3000/crawl \
+curl -X POST http://localhost:3333/crawl \
   -H 'Content-Type: application/json' \
   -d '{ "url": "https://www.wikipedia.org" }'
 # { "id": "1", "url": "https://www.wikipedia.org", "state": "waiting" }
@@ -65,7 +68,7 @@ Optionally pick the engine per job: `{ "url": "...", "engine": "browser" }`
 **Poll status / get the result:**
 
 ```bash
-curl http://localhost:3000/status/1
+curl http://localhost:3333/status/1
 ```
 
 ```jsonc
@@ -92,14 +95,32 @@ curl http://localhost:3000/status/1
 **Cancel a job:**
 
 ```bash
-curl -X DELETE http://localhost:3000/cancel/1
+curl -X DELETE http://localhost:3333/cancel/1
+```
+
+**List recent crawls (history):** paginated, most recent first. Complements the
+by-id lookup above — useful for a history view or the demo. Beyond the spec's
+three endpoints, but cheap because it reads the same job store.
+
+```bash
+curl 'http://localhost:3333/crawls?page=1&limit=20'
+curl 'http://localhost:3333/crawls?state=failed'   # filter to one state
+# { "page":1, "limit":20, "total":42, "count":20, "items":[ {status objects} ] }
+```
+
+**Health probe:** returns `200` when Redis is reachable *and* a worker is
+registered on the queue; `503` otherwise. This is the platform health check.
+
+```bash
+curl http://localhost:3333/health
+# { "status":"ok", "info":{ "crawl-queue":{ "status":"up", "workers":1, ... } } }
 ```
 
 Real sample responses for both engines are in [`samples/`](./samples).
 
 ### Watching the queue (Bull Board)
 
-For a visual view of the queue, open **`http://localhost:3000/admin/queues`**.
+For a visual view of the queue, open **`http://localhost:3333/admin/queues`**.
 Bull Board is the standard BullMQ dashboard: it lists every job by state
 (waiting / active / completed / failed), and lets you drill into a job to see
 its input URL, the extracted result and — for failures — the error and retry
@@ -265,8 +286,9 @@ All via `.env` (see `.env.example` for the annotated list):
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `PORT` | `3000` | HTTP port |
-| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | Queue store |
+| `PORT` | `3333` | HTTP port |
+| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | Queue store (local) |
+| `REDIS_URL` | *(unset)* | Full connection string; overrides host/port (managed Redis) |
 | `FETCH_ENGINE` | `http` | Default engine (`http` or `browser`) |
 | `FETCH_TIMEOUT_MS` | `15000` | Per-request timeout |
 | `JOB_ATTEMPTS` | `2` | Attempts before a job is failed |
@@ -274,6 +296,48 @@ All via `.env` (see `.env.example` for the annotated list):
 | `WORKER_CONCURRENCY` | `3` | Concurrent jobs per worker |
 | `PROXY_URLS` | *(empty)* | Comma-separated proxy list; empty = direct |
 | `USER_AGENTS` | *(built-in pool)* | Optional UA override |
+| `BULL_BOARD_ROUTE` | `/admin/queues` | Mount point for the queue dashboard |
+| `PUPPETEER_EXECUTABLE_PATH` | *(unset)* | Path to a system Chromium (set in containers) |
+
+---
+
+## Deployment
+
+The repo is container-first and ships a **`Dockerfile`** and a **`render.yaml`**
+blueprint for [Render](https://render.com).
+
+### Docker (anywhere)
+
+```bash
+docker build -t showtimes-crawler .
+docker run -p 3333:10000 \
+  -e PORT=10000 \
+  -e REDIS_URL=redis://host.docker.internal:6379 \
+  showtimes-crawler
+```
+
+The image is multi-stage (build → slim runtime), installs a **system Chromium**
+and points Puppeteer at it via `PUPPETEER_EXECUTABLE_PATH`, runs as a non-root
+user, and uses `dumb-init` to reap the child processes headless Chromium spawns.
+
+### Render (one-click blueprint)
+
+`render.yaml` provisions two resources: the Docker web service and a managed
+Redis, with the Redis connection string injected into the service automatically.
+
+1. Push this repo to GitHub.
+2. In Render: **New +** → **Blueprint** → select this repo.
+3. Render reads `render.yaml`, provisions Redis + the web service, builds the
+   Dockerfile and deploys. No manual env wiring needed (except `PROXY_URLS`, if
+   you use one — it's marked `sync: false` so you set it in the dashboard).
+4. Health check hits `/docs`; once green, the API, Swagger and the queue
+   dashboard are all live on the service URL.
+
+**Notes for the free tier:** the default `http` engine runs comfortably. The
+`browser` (Puppeteer) engine is memory-heavy — on Render's 512MB free instance
+a headless Chrome launch can be tight, so it's best exercised on a paid instance
+or locally. Free web services also sleep when idle and cold-start on the next
+request; the first call after a sleep will be slow.
 
 ---
 

@@ -4,6 +4,8 @@ import { BullModule } from '@nestjs/bullmq';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
 import { CrawlModule } from './crawl/crawl.module';
+import { HealthModule } from './health/health.module';
+import { buildRedisConnection } from './redis.config';
 
 @Module({
   imports: [
@@ -11,10 +13,7 @@ import { CrawlModule } from './crawl/crawl.module';
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        connection: {
-          host: config.get<string>('REDIS_HOST', 'localhost'),
-          port: config.get<number>('REDIS_PORT', 6379),
-        },
+        connection: buildRedisConnection(config),
       }),
     }),
     // Bull Board: a read-only web dashboard for the queue — inspect waiting/
@@ -26,6 +25,7 @@ import { CrawlModule } from './crawl/crawl.module';
       adapter: ExpressAdapter,
     }),
     CrawlModule,
+    HealthModule,
   ],
 })
 export class AppModule {}
