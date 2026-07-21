@@ -5,6 +5,8 @@ coverage
 .env
 *.log
 samples
+presentation.html
+.claude
 .vscode
 .idea
 .DS_Store

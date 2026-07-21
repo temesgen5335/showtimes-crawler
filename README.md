@@ -36,6 +36,7 @@ The app now exposes three surfaces:
 - REST API — `http://localhost:3333`
 - **Swagger UI** — `http://localhost:3333/docs` (interactive API docs; drive every endpoint from the browser)
 - **Queue dashboard (Bull Board)** — `http://localhost:3333/admin/queues` (inspect jobs, their data, results and errors live)
+- **Project walkthrough** — `http://localhost:3333/roadmap` (architecture & design walkthrough; the site root `/` redirects here)
 
 ```bash
 # run the test suite (no network or Redis required — everything is mocked)

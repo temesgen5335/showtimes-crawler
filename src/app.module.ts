@@ -5,6 +5,7 @@ import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
 import { CrawlModule } from './crawl/crawl.module';
 import { HealthModule } from './health/health.module';
+import { RoadmapModule } from './roadmap/roadmap.module';
 import { buildRedisConnection } from './redis.config';
 
 @Module({
@@ -26,6 +27,7 @@ import { buildRedisConnection } from './redis.config';
     }),
     CrawlModule,
     HealthModule,
+    RoadmapModule,
   ],
 })
 export class AppModule {}

@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Showtimes Crawler — Technical Walkthrough</title>
+<style>
+  /* ============================================================
+     MARQUEE & MACHINE — tokens
+     Structural accent = marquee gold. Job-state colors are
+     semantic and deliberately separate from the accent.
+     ============================================================ */
+  :root {
+    --ink:        #0e1319;
+    --bg:         #eceff3;
+    --surface:    #ffffff;
+    --surface-2:  #f4f6f9;
+    --border:     #d6dce4;
+    --text:       #1b2530;
+    --text-soft:  #4a5766;
+    --text-faint: #78859a;
+    --accent:     #b8791a;   /* gold, darkened for contrast on light */
+    --accent-bright: #e8b04b;
+    --accent-soft: #f6e7c4;
+
+    --good:   #1f9d57;
+    --info:   #2f7fd0;
+    --bad:    #cf3b32;
+    --wait:   #8090a2;
+
+    --good-bg: #e4f4ea;
+    --info-bg: #e2eefa;
+    --bad-bg:  #fbe6e4;
+    --wait-bg: #e8ecf1;
+
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans:  -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono:  ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+    --maxw: 1180px;
+    --rail: 250px;
+    --r: 10px;
+
+    --shadow: 0 1px 2px rgba(16,24,32,.04), 0 8px 28px rgba(16,24,32,.06);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink:        #e9edf3;
+      --bg:         #0e1319;
+      --surface:    #151c25;
+      --surface-2:  #1a222d;
+      --border:     #26303c;
+      --text:       #dbe3ec;
+      --text-soft:  #9fadbe;
+      --text-faint: #6f7e90;
+      --accent:     #e8b04b;
+      --accent-bright: #f2c268;
+      --accent-soft: #2a2416;
+
+      --good:   #4cc47e;  --info:   #5aa5ee;  --bad:    #ec6a60;  --wait:   #7f8ea1;
+      --good-bg: #14251b; --info-bg: #12202f; --bad-bg: #2a1614; --wait-bg: #1b232e;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 34px rgba(0,0,0,.45);
+    }
+  }
+  /* explicit toggle wins in both directions */
+  :root[data-theme="light"] {
+    --ink:#0e1319; --bg:#eceff3; --surface:#fff; --surface-2:#f4f6f9; --border:#d6dce4;
+    --text:#1b2530; --text-soft:#4a5766; --text-faint:#78859a;
+    --accent:#b8791a; --accent-bright:#e8b04b; --accent-soft:#f6e7c4;
+    --good:#1f9d57; --info:#2f7fd0; --bad:#cf3b32; --wait:#8090a2;
+    --good-bg:#e4f4ea; --info-bg:#e2eefa; --bad-bg:#fbe6e4; --wait-bg:#e8ecf1;
+    --shadow:0 1px 2px rgba(16,24,32,.04),0 8px 28px rgba(16,24,32,.06);
+  }
+  :root[data-theme="dark"] {
+    --ink:#e9edf3; --bg:#0e1319; --surface:#151c25; --surface-2:#1a222d; --border:#26303c;
+    --text:#dbe3ec; --text-soft:#9fadbe; --text-faint:#6f7e90;
+    --accent:#e8b04b; --accent-bright:#f2c268; --accent-soft:#2a2416;
+    --good:#4cc47e; --info:#5aa5ee; --bad:#ec6a60; --wait:#7f8ea1;
+    --good-bg:#14251b; --info-bg:#12202f; --bad-bg:#2a1614; --wait-bg:#1b232e;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 34px rgba(0,0,0,.45);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 84px; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  a { color: inherit; }
+  ::selection { background: var(--accent-bright); color: #0e1319; }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px clamp(16px, 4vw, 40px);
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .brand { display:flex; align-items:center; gap:10px; font-family: var(--mono); font-size:13px; letter-spacing:.02em; }
+  .brand .dot { width:10px; height:10px; border-radius:50%; background:var(--accent-bright); box-shadow:0 0 0 4px var(--accent-soft); }
+  .brand strong { font-weight:600; color:var(--ink); }
+  .topbar .spacer { flex:1; }
+  .topbar a.ext { font-family:var(--mono); font-size:12px; color:var(--text-soft); text-decoration:none; padding:6px 10px; border:1px solid var(--border); border-radius:8px; }
+  .topbar a.ext:hover { color:var(--ink); border-color:var(--accent); }
+  .toggle {
+    font-family: var(--mono); font-size:12px; cursor:pointer;
+    background: var(--surface); color: var(--text-soft);
+    border:1px solid var(--border); border-radius:8px; padding:6px 10px;
+  }
+  .toggle:hover { color:var(--ink); border-color:var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; border-radius:4px; }
+
+  /* ---------- shell ---------- */
+  .shell { max-width: var(--maxw); margin: 0 auto; display: grid; grid-template-columns: var(--rail) 1fr; gap: 48px; padding: 0 clamp(16px,4vw,40px); }
+  @media (max-width: 940px) { .shell { grid-template-columns: 1fr; } .rail { display:none; } }
+
+  /* ---------- rail ---------- */
+  .rail { position: sticky; top: 84px; align-self: start; height: calc(100vh - 100px); overflow-y:auto; padding: 28px 0; }
+  .rail .eyebrow { font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--text-faint); margin:0 0 14px; }
+  .rail ol { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px; }
+  .rail a { display:flex; gap:10px; align-items:baseline; text-decoration:none; color:var(--text-soft); font-size:13.5px; padding:6px 10px; border-radius:7px; border-left:2px solid transparent; }
+  .rail a .n { font-family:var(--mono); font-size:11px; color:var(--text-faint); min-width:18px; }
+  .rail a:hover { background:var(--surface-2); color:var(--ink); }
+  .rail a.active { color:var(--ink); background:var(--surface-2); border-left-color:var(--accent-bright); }
+  .rail a.active .n { color:var(--accent); }
+
+  /* ---------- content ---------- */
+  main { padding: 8px 0 120px; min-width: 0; }
+  section { padding-top: 40px; margin-top: 40px; border-top: 1px solid var(--border); }
+  section:first-of-type { border-top: none; margin-top: 0; }
+  .eyebrow { font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); display:flex; align-items:center; gap:10px; margin:0 0 12px; }
+  .eyebrow .num { color:var(--text-faint); }
+  h1,h2,h3 { font-family: var(--serif); color: var(--ink); text-wrap: balance; line-height:1.14; letter-spacing:-.01em; }
+  h2 { font-size: clamp(1.7rem, 3.4vw, 2.5rem); margin:.1em 0 .5em; font-weight:600; }
+  h3 { font-size: 1.22rem; margin: 0 0 .35em; font-weight:600; }
+  p { max-width: 72ch; color: var(--text); }
+  .lead { font-size: 1.12rem; color: var(--text-soft); max-width: 66ch; }
+  strong { color: var(--ink); }
+  code { font-family: var(--mono); font-size: .86em; background: var(--surface-2); border:1px solid var(--border); padding: .08em .38em; border-radius: 5px; color: var(--accent); }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 56px 0 8px; border-top:none; }
+  .hero h1 { font-size: clamp(2.6rem, 6.5vw, 4.4rem); margin: 12px 0 18px; font-weight:600; }
+  .hero .kicker { font-family:var(--mono); font-size:13px; letter-spacing:.18em; text-transform:uppercase; color:var(--accent); }
+  .hero .thesis { font-size: clamp(1.12rem,2.1vw,1.35rem); color:var(--text-soft); max-width: 60ch; line-height:1.5; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; margin: 26px 0 8px; }
+  .chip { font-family:var(--mono); font-size:12px; padding:7px 11px; border-radius:999px; border:1px solid var(--border); background:var(--surface); color:var(--text-soft); display:flex; gap:7px; align-items:center; }
+  .chip b { color:var(--ink); font-weight:600; }
+  .chip .g { color:var(--good); } .chip .a { color:var(--accent); }
+
+  /* ---------- pipeline diagram ---------- */
+  .diagram { background: var(--surface); border:1px solid var(--border); border-radius: var(--r); padding: 26px; margin: 26px 0; box-shadow: var(--shadow); overflow-x:auto; }
+  .diagram .cap { font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-faint); margin-bottom:18px; }
+  .flow { display:flex; align-items:stretch; gap:0; min-width:720px; }
+  .node { flex:1; background: var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:14px 14px; position:relative; display:flex; flex-direction:column; gap:6px; }
+  .node .tag { font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); }
+  .node .name { font-weight:600; color:var(--ink); font-size:14px; }
+  .node .sub { font-size:12px; color:var(--text-faint); font-family:var(--mono); }
+  .arrow { display:flex; align-items:center; padding:0 4px; color:var(--text-faint); }
+  .arrow svg { width:26px; height:16px; }
+  .flow.animate .pip { position:absolute; top:-7px; left:8px; width:12px; height:12px; border-radius:50%; background:var(--accent-bright); box-shadow:0 0 12px var(--accent-bright); animation: travel 4.2s ease-in-out .4s infinite; }
+  @keyframes travel { 0%{left:6%;opacity:0;} 8%{opacity:1;} 92%{opacity:1;} 100%{left:94%;opacity:0;} }
+  @media (prefers-reduced-motion: reduce){ .flow.animate .pip{ animation:none; display:none; } }
+
+  /* ---------- generic cards ---------- */
+  .grid { display:grid; gap:16px; margin:22px 0; }
+  .grid.two { grid-template-columns: repeat(2, 1fr); }
+  .grid.three { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width:760px){ .grid.two, .grid.three { grid-template-columns:1fr; } }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:20px; box-shadow:var(--shadow); }
+  .card h3 { display:flex; align-items:center; gap:9px; }
+  .card .file { font-family:var(--mono); font-size:11.5px; color:var(--accent); background:var(--accent-soft); padding:2px 7px; border-radius:5px; font-weight:normal; }
+  .card p { font-size:14.5px; color:var(--text-soft); margin:.3em 0 0; }
+  .card .why { margin-top:12px; padding-top:12px; border-top:1px dashed var(--border); font-size:13.5px; }
+  .card .why b { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); display:block; margin-bottom:3px; }
+
+  /* ---------- state pills ---------- */
+  .pill { font-family:var(--mono); font-size:11.5px; padding:3px 9px; border-radius:999px; font-weight:600; display:inline-flex; align-items:center; gap:6px; }
+  .pill::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .pill.good{ color:var(--good); background:var(--good-bg);} .pill.info{color:var(--info);background:var(--info-bg);}
+  .pill.bad{ color:var(--bad); background:var(--bad-bg);} .pill.wait{color:var(--wait);background:var(--wait-bg);}
+
+  /* ---------- tables ---------- */
+  .tablewrap { overflow-x:auto; margin:20px 0; border:1px solid var(--border); border-radius:var(--r); }
+  table { border-collapse:collapse; width:100%; min-width:560px; font-size:14px; }
+  th,td { text-align:left; padding:11px 14px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-faint); background:var(--surface-2); }
+  tr:last-child td { border-bottom:none; }
+  td b { color:var(--ink); }
+  td .mono, .mono { font-family:var(--mono); }
+
+  /* ---------- code blocks ---------- */
+  pre { background:var(--ink); color:#e7edf5; border-radius:var(--r); padding:16px 18px; overflow-x:auto; font-family:var(--mono); font-size:12.5px; line-height:1.65; margin:16px 0; border:1px solid var(--border); }
+  :root[data-theme="light"] pre, :root:not([data-theme="dark"]) pre { background:#141b24; }
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]) pre { background:#0a0e13; } }
+  pre .c { color:#7f8ea1; } pre .k { color:#e8b04b; } pre .s { color:#8fd19e; } pre .m { color:#5aa5ee; }
+  pre code { background:none; border:none; color:inherit; padding:0; font-size:inherit; }
+
+  /* ---------- file tree ---------- */
+  .tree { font-family:var(--mono); font-size:12.5px; line-height:1.9; color:var(--text-soft); background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:20px 22px; overflow-x:auto; box-shadow:var(--shadow); }
+  .tree .d { color:var(--accent); } .tree .f { color:var(--text); } .tree .cm { color:var(--text-faint); }
+
+  /* ---------- compare (bull board) ---------- */
+  .versus { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:22px 0; }
+  @media (max-width:760px){ .versus { grid-template-columns:1fr; } }
+  .versus .col { border:1px solid var(--border); border-radius:var(--r); padding:20px; background:var(--surface); }
+  .versus .col.win { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .versus .col h3 { display:flex; align-items:center; justify-content:space-between; }
+  .versus .badge { font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; padding:3px 8px; border-radius:999px; }
+  .versus .badge.chosen { background:var(--accent-soft); color:var(--accent); }
+  .versus .badge.no { background:var(--wait-bg); color:var(--wait); }
+  .versus ul { margin:12px 0 0; padding-left:18px; font-size:14px; color:var(--text-soft); }
+  .versus li { margin:6px 0; }
+
+  /* ---------- callout ---------- */
+  .callout { border-left:3px solid var(--accent-bright); background:var(--surface-2); border-radius:0 var(--r) var(--r) 0; padding:16px 20px; margin:20px 0; }
+  .callout .l { font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin-bottom:5px; }
+  .callout p { margin:0; font-size:14.5px; }
+
+  /* ---------- Q&A ---------- */
+  .qa-group { margin:14px 0; }
+  .qa-group .gl { font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--text-faint); margin:22px 0 10px; }
+  details.qa { border:1px solid var(--border); border-radius:var(--r); margin:9px 0; background:var(--surface); overflow:hidden; }
+  details.qa summary { cursor:pointer; padding:15px 18px; font-weight:600; color:var(--ink); list-style:none; display:flex; gap:12px; align-items:flex-start; font-size:15px; }
+  details.qa summary::-webkit-details-marker { display:none; }
+  details.qa summary .q { font-family:var(--mono); color:var(--accent); font-size:13px; margin-top:1px; }
+  details.qa summary .caret { margin-left:auto; color:var(--text-faint); transition:transform .2s; flex-shrink:0; }
+  details.qa[open] summary .caret { transform:rotate(90deg); }
+  details.qa .a { padding:0 18px 17px 44px; color:var(--text-soft); font-size:14.5px; }
+  details.qa .a p { margin:.2em 0 .7em; max-width:70ch; }
+  details.qa .a p:last-child { margin-bottom:0; }
+
+  /* ---------- shortcomings ---------- */
+  .short { display:grid; gap:12px; margin:20px 0; }
+  .short .item { display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:start; padding:16px 18px; background:var(--surface); border:1px solid var(--border); border-radius:var(--r); }
+  .short .tag { font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; padding:4px 9px; border-radius:6px; background:var(--wait-bg); color:var(--wait); white-space:nowrap; height:fit-content; }
+  .short .tag.p1 { background:var(--bad-bg); color:var(--bad); }
+  .short .tag.p2 { background:var(--info-bg); color:var(--info); }
+  .short h3 { font-family:var(--sans); font-size:15px; }
+  .short p { font-size:14px; color:var(--text-soft); margin:.25em 0 0; }
+
+  /* ---------- footer ---------- */
+  footer { border-top:1px solid var(--border); margin-top:60px; padding:36px clamp(16px,4vw,40px); }
+  footer .fwrap { max-width:var(--maxw); margin:0 auto; display:flex; flex-wrap:wrap; gap:24px; justify-content:space-between; align-items:center; }
+  footer .links { display:flex; flex-wrap:wrap; gap:10px; }
+  footer a.link { font-family:var(--mono); font-size:12.5px; text-decoration:none; color:var(--text-soft); border:1px solid var(--border); padding:8px 12px; border-radius:8px; }
+  footer a.link:hover { color:var(--ink); border-color:var(--accent); }
+  footer .note { font-size:13px; color:var(--text-faint); max-width:46ch; }
+
+  .reveal { opacity:0; transform:translateY(14px); transition:opacity .6s ease, transform .6s ease; }
+  .reveal.in { opacity:1; transform:none; }
+  @media (prefers-reduced-motion:reduce){ .reveal{ opacity:1; transform:none; transition:none; } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="dot"></span><strong>showtimes-crawler</strong><span style="color:var(--text-faint)">/ technical walkthrough</span></div>
+  <span class="spacer"></span>
+  <a class="ext" href="https://showtimes-crawler.onrender.com/docs" target="_blank" rel="noopener">live&nbsp;·&nbsp;/docs ↗</a>
+  <button class="toggle" id="themeToggle" aria-label="Toggle color theme">◐ theme</button>
+</div>
+
+<div class="shell">
+  <nav class="rail" aria-label="Contents">
+    <p class="eyebrow">The reel</p>
+    <ol id="toc">
+      <li><a href="#brief"><span class="n">01</span> The brief &amp; constraints</a></li>
+      <li><a href="#architecture"><span class="n">02</span> Architecture at a glance</a></li>
+      <li><a href="#walkthrough"><span class="n">03</span> Component walkthrough</a></li>
+      <li><a href="#structure"><span class="n">04</span> Project structure</a></li>
+      <li><a href="#decisions"><span class="n">05</span> Design decisions</a></li>
+      <li><a href="#board"><span class="n">06</span> Bull Board vs dashboard</a></li>
+      <li><a href="#antibot"><span class="n">07</span> Anti-blocking depth</a></li>
+      <li><a href="#scale"><span class="n">08</span> Scaling to 25k+ sites</a></li>
+      <li><a href="#gaps"><span class="n">09</span> Shortcomings &amp; next</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <!-- HERO -->
+    <header class="hero">
+      <p class="kicker">Senior Crawler Developer · technical assessment</p>
+      <h1>A crawler whose <em>shape</em> scales.</h1>
+      <p class="thesis">A queue-based web crawler built in Nest.js — you POST a URL, a worker fetches and extracts it asynchronously, and every slow, fragile part of scraping is governed centrally. Built for International Showtimes, designed for 25,000+ sites.</p>
+      <div class="chips">
+        <span class="chip"><b>Nest.js</b> · TypeScript</span>
+        <span class="chip">BullMQ + <b>Redis</b></span>
+        <span class="chip">Cheerio · <b>Puppeteer</b></span>
+        <span class="chip"><span class="g">●</span> 43 tests · 8 suites</span>
+        <span class="chip"><span class="a">◆</span> deployed on Render</span>
+        <span class="chip"><span class="g">✓</span> <b>100%</b> · traumpalast.de</span>
+      </div>
+
+      <div class="diagram">
+        <div class="cap">The pipeline — a URL's journey</div>
+        <div class="flow animate">
+          <span class="pip" aria-hidden="true"></span>
+          <div class="node"><span class="tag">POST /crawl</span><span class="name">Controller</span><span class="sub">validate · enqueue</span></div>
+          <div class="arrow"><svg viewBox="0 0 26 16"><path d="M0 8h20m0 0l-5-5m5 5l-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+          <div class="node"><span class="tag">BullMQ</span><span class="name">Queue (Redis)</span><span class="sub">retries · rate limit</span></div>
+          <div class="arrow"><svg viewBox="0 0 26 16"><path d="M0 8h20m0 0l-5-5m5 5l-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+          <div class="node"><span class="tag">Worker</span><span class="name">Processor</span><span class="sub">rotate UA + proxy</span></div>
+          <div class="arrow"><svg viewBox="0 0 26 16"><path d="M0 8h20m0 0l-5-5m5 5l-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+          <div class="node"><span class="tag">Strategy</span><span class="name">PageFetcher</span><span class="sub">http · browser</span></div>
+          <div class="arrow"><svg viewBox="0 0 26 16"><path d="M0 8h20m0 0l-5-5m5 5l-5 5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+          <div class="node"><span class="tag">Cheerio</span><span class="name">Extraction</span><span class="sub">→ result on job</span></div>
+        </div>
+      </div>
+
+      <div class="callout" style="margin-top:22px">
+        <div class="l">Field result · reviewer acceptance test</div>
+        <p>Scored <b>100%</b> against <b>traumpalast.de</b> — a live German cinema chain, i.e. International Showtimes' own domain. Fetched by the lightweight <span class="mono">http</span> engine, no proxy, in <b>2.19s</b>: redirect followed to the canonical URL, cross-origin CDN assets (<span class="mono">static.filmtheaterbetriebe.de</span>) resolved to absolute, German unicode intact, favicon fallback correct. Cheap-first — proven on their home turf.</p>
+      </div>
+    </header>
+
+    <!-- 01 BRIEF -->
+    <section id="brief">
+      <p class="eyebrow"><span class="num">01</span> The brief &amp; constraints</p>
+      <h2>What was mandated, and what was left open</h2>
+      <p class="lead">The assessment was a two-part specification with the stack named explicitly. That framing decided several things before a line was written — most importantly the language.</p>
+
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Part</th><th>Requirement</th><th>Mandated tools</th></tr></thead>
+          <tbody>
+            <tr><td><b>Part 1</b><br><span class="mono" style="color:var(--text-faint)">the crawler</span></td>
+              <td>Crawl a given URL and extract <b>title, meta description, favicon, script + stylesheet URLs, image URLs</b>. Queue &amp; process jobs. REST API to start / monitor / cancel. Unit tests.</td>
+              <td class="mono">Nest.js · Axios · Cheerio · BullMQ · Redis · Swagger</td></tr>
+            <tr><td><b>Part 2</b><br><span class="mono" style="color:var(--text-faint)">anti-blocking</span></td>
+              <td>Headless-browser fetching. Rotating user-agents. Rotating IPs via proxy/VPN, configured by env. Rate limiting. Unit tests.</td>
+              <td class="mono">Puppeteer · proxy/VPN · env config</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="grid three">
+        <div class="card"><h3>Endpoints (fixed)</h3><p><span class="mono">POST /crawl</span> · <span class="mono">GET /status/:id</span> · <span class="mono">DELETE /cancel/:id</span> — named exactly by the spec. Contracts kept intact.</p></div>
+        <div class="card"><h3>Deadline</h3><p>Document said 5 working days; recruiter framed it as 3. Treated 3 as the real budget with slack in reserve.</p></div>
+        <div class="card"><h3>No target site</h3><p>The crawler takes <em>any</em> URL. So Part 2 is about proving I know the anti-bot <em>mechanisms</em> — not defeating one specific WAF.</p></div>
+      </div>
+
+      <div class="callout">
+        <div class="l">The decision the brief forced</div>
+        <p>My scraping background is primarily Python. But the spec names Nest.js, Axios, Cheerio, BullMQ and Puppeteer by name — the exact tools the team uses. Submitting Python would read as dodging the test. So: build in the required stack, lean on real TypeScript fluency. The scraping <em>concepts</em> transfer; only the syntax was new. Stated plainly, never hidden.</p>
+      </div>
+    </section>
+
+    <!-- 02 ARCHITECTURE -->
+    <section id="architecture">
+      <p class="eyebrow"><span class="num">02</span> Architecture at a glance</p>
+      <h2>Queue-first, not fetch-in-the-request</h2>
+      <p class="lead">The single most important decision. Crawling is slow and failure-prone, so it must never run inside the HTTP request. Everything else follows from that shape.</p>
+
+      <div class="diagram">
+        <div class="cap">Request path &amp; worker path</div>
+        <pre style="margin:0;background:var(--surface-2);color:var(--text)"><code>POST /crawl ─▶ CrawlController ─▶ CrawlService.enqueue() ─▶ BullMQ queue (Redis)
+                                                                   │
+                                                                   ▼
+GET  /status/:id ◀─ CrawlService.getStatus() ◀───────────  CrawlProcessor (worker)
+GET  /crawls     ◀─ CrawlService.list()                     │  1. pick engine
+DELETE /cancel/:id ─▶ CrawlService.cancel()                 │  2. rotate UA + proxy
+GET  /health     ◀─ QueueHealthIndicator                    │  3. fetch page
+                                                            │  4. extract data
+                                                            ▼
+                                                   PageFetcher (strategy)
+                                                   ├─ AxiosFetcher      (http)
+                                                   └─ PuppeteerFetcher  (browser)
+                                                            │
+                                                            ▼
+                                                   ExtractionService (Cheerio)</code></pre>
+      </div>
+
+      <div class="grid two">
+        <div class="card"><h3>Why the queue earns its place</h3>
+          <p>Throughput is governed <b>centrally</b> — rate limit, concurrency, retries with backoff, and job state all live in one place instead of being reinvented per request. That is exactly what matters going from one site to many.</p></div>
+        <div class="card"><h3>Three properties it buys for free</h3>
+          <p><b>Durability</b> — a crashed worker doesn't lose the job. <b>Backpressure</b> — the limiter protects targets and the proxy pool. <b>Horizontal scale</b> — add worker processes, zero code change.</p></div>
+      </div>
+    </section>
+
+    <!-- 03 WALKTHROUGH -->
+    <section id="walkthrough">
+      <p class="eyebrow"><span class="num">03</span> Component walkthrough</p>
+      <h2>Every part, and the one job it owns</h2>
+      <p class="lead">The codebase is organised by responsibility, not by type. Each unit below does one thing and is testable in isolation.</p>
+
+      <div class="grid two">
+        <div class="card"><h3>API layer <span class="file">crawl.controller.ts · dto/</span></h3>
+          <p>The HTTP surface. Thin controllers; all request/response shapes are decorated DTOs, so <b>Swagger and validation both derive from the same source</b>. A global <code>ValidationPipe</code> (whitelist + transform) rejects bad input before it reaches logic.</p>
+          <div class="why"><b>Why</b>Update the DTO, not an ad-hoc object — docs can never drift from the contract.</div></div>
+
+        <div class="card"><h3>Orchestration <span class="file">crawl.service.ts</span></h3>
+          <p>Enqueue, status lookup, history listing, cancellation. The only place that talks to the queue. Maps a BullMQ job to the API's status DTO through one shared helper.</p>
+          <div class="why"><b>Why</b>One seam between the domain and BullMQ keeps the queue swappable and the controller dumb.</div></div>
+
+        <div class="card"><h3>Worker <span class="file">crawl.processor.ts</span></h3>
+          <p>The BullMQ consumer. Per job: pick the engine, rotate UA + proxy, fetch, extract, return the result. Honours a worker-level rate limit and cooperative cancellation checkpoints.</p>
+          <div class="why"><b>Why</b>All the slow, fragile work is quarantined here — behind the queue, never in a request.</div></div>
+
+        <div class="card"><h3>Fetcher strategy <span class="file">fetcher/</span></h3>
+          <p>A <code>PageFetcher</code> interface with two implementations — <code>AxiosFetcher</code> (http) and <code>PuppeteerFetcher</code> (browser). The processor chooses per job; nothing downstream knows which ran.</p>
+          <div class="why"><b>Why</b>Adding Playwright or a CAPTCHA-solving proxy is a <em>new class</em>, not a rewrite.</div></div>
+
+        <div class="card"><h3>Extraction <span class="file">extraction/extraction.service.ts</span></h3>
+          <p>Pure and I/O-free: <code>extract(html, baseUrl)</code> in, structured data out. All URLs resolved to absolute against the post-redirect URL, de-duplicated; <code>data:</code> / <code>javascript:</code> dropped. Favicon has a real browser-like fallback chain.</p>
+          <div class="why"><b>Why</b>No network inside means it's exhaustively testable against fixtures — where all the fiddly edge cases live.</div></div>
+
+        <div class="card"><h3>Anti-blocking <span class="file">anti-blocking/</span></h3>
+          <p>Small round-robin <code>UserAgentRotator</code> and <code>ProxyRotator</code> fed from env. Empty proxy list ⇒ direct fetch. Rate limiting is the BullMQ limiter, not ad-hoc sleeps.</p>
+          <div class="why"><b>Why</b>Config-driven and composable — the identity strategy is data, not code.</div></div>
+
+        <div class="card"><h3>Health <span class="file">health/queue-health.indicator.ts</span></h3>
+          <p>Terminus probe. Returns 200 <b>only when Redis is reachable AND ≥1 worker is registered</b> — else 503. A queue with no worker silently accepts jobs and never runs them; the probe refuses to call that healthy.</p>
+          <div class="why"><b>Why</b>A health check that can't fail on the real failure mode is theatre.</div></div>
+
+        <div class="card"><h3>Observability <span class="file">Bull Board · /admin/queues</span></h3>
+          <p>The standard BullMQ dashboard, read-only, reading the same Redis. Drill into any job: input URL, extracted result, error and retry count.</p>
+          <div class="why"><b>Why</b>Real queue visibility in ~15 lines — no bespoke UI to build or maintain.</div></div>
+      </div>
+
+      <h3 style="margin-top:34px">Cancellation is honest about what's possible</h3>
+      <p>A reviewer will poke this. The semantics are deliberate:</p>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Job state</th><th>DELETE /cancel/:id does</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td><span class="pill wait">waiting</span></td><td>Removed from the queue outright.</td><td><span class="pill bad">cancelled</span> 200</td></tr>
+            <tr><td><span class="pill info">active</span></td><td>Sets a <code>cancelRequested</code> flag; worker aborts at its next checkpoint (before / after fetch).</td><td>200 → settles <span class="pill bad">failed</span> "Cancelled by user"</td></tr>
+            <tr><td><span class="pill good">completed</span></td><td>Nothing — cannot cancel finished work.</td><td>409 Conflict</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:14px;color:var(--text-soft)">No pretending a running fetch can be force-killed. Modelling the real state machine beats faking instant cancellation — and it's exactly the kind of nuance that matters at scale.</p>
+    </section>
+
+    <!-- 04 STRUCTURE -->
+    <section id="structure">
+      <p class="eyebrow"><span class="num">04</span> Project structure</p>
+      <h2>One responsibility per folder</h2>
+      <p class="lead">New concerns get their own directory rather than swelling a service. The layout <em>is</em> the documentation.</p>
+      <div class="tree">
+<span class="d">src/</span>
+├─ <span class="f">main.ts</span>                        <span class="cm"># bootstrap · Swagger · Bull Board · 0.0.0.0:3333</span>
+├─ <span class="f">app.module.ts</span>                  <span class="cm"># Redis/BullMQ wiring · module composition</span>
+├─ <span class="f">redis.config.ts</span>                <span class="cm"># REDIS_URL vs host/port · TLS for rediss://</span>
+├─ <span class="d">crawl/</span>
+│   ├─ <span class="f">crawl.controller.ts</span>        <span class="cm"># the 5 endpoints</span>
+│   ├─ <span class="f">crawl.service.ts</span>           <span class="cm"># enqueue · status · list · cancel</span>
+│   ├─ <span class="f">crawl.processor.ts</span>         <span class="cm"># BullMQ worker</span>
+│   ├─ <span class="f">crawl.types.ts</span>
+│   ├─ <span class="d">dto/</span>                       <span class="cm"># the API contract (+ Swagger + validation)</span>
+│   ├─ <span class="d">extraction/</span>                <span class="cm"># pure Cheerio HTML → data</span>
+│   ├─ <span class="d">fetcher/</span>                   <span class="cm"># PageFetcher · Axios · Puppeteer</span>
+│   └─ <span class="d">anti-blocking/</span>             <span class="cm"># UA rotator · proxy rotator</span>
+├─ <span class="d">health/</span>                       <span class="cm"># Terminus probe (Redis + worker liveness)</span>
+<span class="d">.claude/</span>                          <span class="cm"># onboarding: context · rules · memory · agent</span>
+<span class="f">Dockerfile</span> · <span class="f">render.yaml</span>          <span class="cm"># multi-stage build · Render blueprint</span>
+<span class="f">docker-compose.yml</span>                <span class="cm"># local Redis</span>
+      </div>
+      <p style="font-size:14px;color:var(--text-soft)">8 spec files · 43 offline unit tests. Every new unit ships with a spec; the suite touches no network, Redis or browser.</p>
+    </section>
+
+    <!-- 05 DECISIONS -->
+    <section id="decisions">
+      <p class="eyebrow"><span class="num">05</span> Design decisions</p>
+      <h2>Each choice, and the trade-off it accepts</h2>
+      <p class="lead">Every decision here is defensible from first principles — and each one gave something up. Naming the trade-off is how you show it was a decision, not a default.</p>
+
+      <div class="grid two">
+        <div class="card"><h3>Queue-first architecture</h3>
+          <div class="why"><b>Choice</b>Enqueue &amp; return a job id; work happens in a worker.</div>
+          <div class="why"><b>Trade-off</b>Callers must poll instead of getting a synchronous result. Worth it: durability, backpressure and horizontal scale.</div></div>
+
+        <div class="card"><h3>PageFetcher strategy interface</h3>
+          <div class="why"><b>Choice</b>Both engines behind one interface; processor picks per job.</div>
+          <div class="why"><b>Trade-off</b>A thin abstraction over two concrete classes. Cheap now, and it's what makes a third engine additive.</div></div>
+
+        <div class="card"><h3>Extraction is pure / I/O-free</h3>
+          <div class="why"><b>Choice</b>Parsing takes already-fetched HTML; no network inside.</div>
+          <div class="why"><b>Trade-off</b>Fetch and parse are two steps, not one. Buys total testability against fixtures.</div></div>
+
+        <div class="card"><h3>Results stored on the job (no DB)</h3>
+          <div class="why"><b>Choice</b>Result is the job's return value in Redis, 24h retention.</div>
+          <div class="why"><b>Trade-off</b>No durable history/analytics. The spec needs none; the upgrade path (Postgres behind a repository) is documented, not faked.</div></div>
+
+        <div class="card"><h3>Config over constants</h3>
+          <div class="why"><b>Choice</b>Ports, timeouts, attempts, limits, proxy list — all env.</div>
+          <div class="why"><b>Trade-off</b>More env surface. Pays off the moment it runs anywhere but a laptop.</div></div>
+
+        <div class="card"><h3>Docker + system Chromium on Render</h3>
+          <div class="why"><b>Choice</b>Multi-stage image, distro Chromium wired to Puppeteer, non-root, dumb-init.</div>
+          <div class="why"><b>Trade-off</b>Heavier than a native build — but Puppeteer's shared libs are unreliable on Render's native env. Reliability wins.</div></div>
+      </div>
+    </section>
+
+    <!-- 06 BULL BOARD -->
+    <section id="board">
+      <p class="eyebrow"><span class="num">06</span> The dashboard question</p>
+      <h2>Why Bull Board — and not a custom dashboard</h2>
+      <p class="lead">A dashboard was never requested. When I considered adding visual crawl history, this is the comparison I ran — and the reasoning matters more than the result.</p>
+
+      <div class="versus">
+        <div class="col win">
+          <h3>Bull Board <span class="badge chosen">chosen</span></h3>
+          <ul>
+            <li>~15 lines; reads the same Redis the worker uses.</li>
+            <li>Real job drill-down: input, result, error, retries, state.</li>
+            <li>Signals fluency with the BullMQ <em>ecosystem</em> — the tool a team actually reaches for.</li>
+            <li>Zero UI to maintain; nothing to get subtly wrong.</li>
+            <li>On-domain for a <em>backend</em> role.</li>
+          </ul>
+        </div>
+        <div class="col">
+          <h3>Custom dashboard <span class="badge no">rejected</span></h3>
+          <ul>
+            <li>Hours of React + streaming/polling + a persistence layer for history.</li>
+            <li>New failure surface; a half-polished UI hurts more than none.</li>
+            <li>Scores in a lane the rubric doesn't grade — this is a crawler role.</li>
+            <li>For a senior hire, gilding the spec can read as over-building.</li>
+            <li>Swagger already covers interactive testing.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout"><div class="l">The principle</div><p>Doing <em>exactly</em> the spec cleanly, with good judgement about what to leave out, is itself the senior signal. Bull Board captured the real value (queue visibility) at a fraction of the cost, on the team's own terms.</p></div>
+    </section>
+
+    <!-- 07 ANTIBOT -->
+    <section id="antibot">
+      <p class="eyebrow"><span class="num">07</span> Anti-blocking depth</p>
+      <h2>What's implemented — and how I'd escalate</h2>
+      <p class="lead">The assessment target has no serious defenses, so the depth lives in the design and the documented escalation path, not in over-engineering the demo.</p>
+
+      <div class="grid two">
+        <div class="card"><h3>Implemented</h3>
+          <p><b>UA rotation</b> — round-robin pool, per-request. <b>Proxy/VPN rotation</b> — round-robin over an env-configured list, works with any provider or a local VPN gateway; credentials masked in output. <b>Rate limiting</b> — BullMQ worker limiter (N jobs / window) protects both target and proxy pool. <b>Browser engine</b> — Puppeteer for JS-only pages, opt-in per job.</p></div>
+        <div class="card"><h3>How I'd handle the hard cases</h3>
+          <p><b>Cloudflare / JS challenges</b> — escalate that domain to the browser engine + residential proxies; the strategy interface already allows it. <b>Akamai / fingerprinting</b> — stealth-patched browser, consistent TLS/JA3 + header/UA coherence, human-like pacing. <b>CAPTCHA</b> — a solver behind the same <code>PageFetcher</code> seam, invoked only on detection.</p></div>
+      </div>
+      <div class="callout"><div class="l">Adaptive by default</div><p>Start every domain on the cheap HTTP engine. When a site starts returning blocks or JS-only shells, auto-escalate <em>that domain</em> to browser + residential proxies. Most of 25k sites never need a browser — you pay for it only where required.</p></div>
+    </section>
+
+    <!-- 08 SCALE -->
+    <section id="scale">
+      <p class="eyebrow"><span class="num">08</span> Scaling</p>
+      <h2>From one URL to 25,000+ sites</h2>
+      <p class="lead">The assessment is a single-URL crawler. International Showtimes tracks 25k+ sites across 120+ markets. The queue-first shape is deliberately the one that gets there — by adding pieces, not rewriting.</p>
+
+      <div class="grid three">
+        <div class="card"><h3>Workers scale out</h3><p>N worker processes against one queue, zero code change. The limiter stays global.</p></div>
+        <div class="card"><h3>Per-domain politeness</h3><p>Rate-limit and concurrency <em>per host</em> (a queue/group per domain) so one slow site can't starve others.</p></div>
+        <div class="card"><h3>Adaptive engine</h3><p>HTTP by default; auto-escalate to browser + residential proxies only where a domain demands it.</p></div>
+        <div class="card"><h3>Frontier &amp; dedup</h3><p>A seen-URL set + scheduling frontier in Redis so 25k sites don't re-crawl or thunder.</p></div>
+        <div class="card"><h3>Durable store</h3><p>Postgres for results/history behind a repository interface; Redis stays the live queue + dedup cache. First thing I'd add for production.</p></div>
+        <div class="card"><h3>Observability</h3><p>Per-domain success / block / latency rates — Bull Board is already wired; metrics extend it so you see defenses change before data goes stale.</p></div>
+      </div>
+    </section>
+
+    <!-- 09 GAPS -->
+    <section id="gaps">
+      <p class="eyebrow"><span class="num">09</span> Shortcomings &amp; next</p>
+      <h2>What it doesn't do — stated plainly</h2>
+      <p class="lead">Honesty over impression. These are known and bounded, documented up front — not discovered after the fact.</p>
+      <div class="short">
+        <div class="item"><span class="tag p1">first up</span><div><h3>No durable persistence</h3><p>Results &amp; history live in Redis with 24h retention — not an audit log. Postgres behind a repository interface is the documented next step.</p></div></div>
+        <div class="item"><span class="tag p2">design-ready</span><div><h3>Single-page crawl only</h3><p>No link-following / depth. The queue makes depth-N additive (enqueue discovered URLs) — deliberately left out of scope, not blocked.</p></div></div>
+        <div class="item"><span class="tag p2">design-ready</span><div><h3>No live CAPTCHA / WAF solving</h3><p>The escalation path is documented and fits behind the fetcher seam; the target didn't need it, so it wasn't built to be built.</p></div></div>
+        <div class="item"><span class="tag">ops</span><div><h3>No per-domain rate limiting yet</h3><p>The limiter is global. Per-host politeness is the key change for true multi-site scale.</p></div></div>
+        <div class="item"><span class="tag">ops</span><div><h3>Free-tier deploy caveats</h3><p>Render free instances sleep (30–60s cold start) and are memory-tight for the browser engine. Fine for demo; a paid instance for real load.</p></div></div>
+        <div class="item"><span class="tag">testing</span><div><h3>No end-to-end / load suite</h3><p>Unit coverage is strong and offline; I'd add an integration test against ephemeral Redis and a small k6 load profile next.</p></div></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <div class="fwrap">
+    <div class="links">
+      <a class="link" href="https://github.com/temesgen5335/showtimes-crawler" target="_blank" rel="noopener">↗ repository</a>
+      <a class="link" href="https://showtimes-crawler.onrender.com/docs" target="_blank" rel="noopener">↗ swagger /docs</a>
+      <a class="link" href="https://showtimes-crawler.onrender.com/admin/queues" target="_blank" rel="noopener">↗ bull board</a>
+      <a class="link" href="https://showtimes-crawler.onrender.com/health" target="_blank" rel="noopener">↗ /health</a>
+    </div>
+    <p class="note">Honesty over impression — every feature here is one I can defend from first principles, and every gap is one I've named.</p>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    // ---- theme toggle ----
+    var root = document.documentElement;
+    var btn = document.getElementById('themeToggle');
+    function current() {
+      if (root.dataset.theme) return root.dataset.theme;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    btn.addEventListener('click', function () {
+      var next = current() === 'dark' ? 'light' : 'dark';
+      root.dataset.theme = next;
+    });
+
+    // ---- active section in rail ----
+    var links = Array.prototype.slice.call(document.querySelectorAll('#toc a'));
+    var map = {};
+    links.forEach(function (a) { map[a.getAttribute('href').slice(1)] = a; });
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) {
+          links.forEach(function (l) { l.classList.remove('active'); });
+          if (map[e.target.id]) map[e.target.id].classList.add('active');
+        }
+      });
+    }, { rootMargin: '-45% 0px -50% 0px' });
+    document.querySelectorAll('main section').forEach(function (s) { obs.observe(s); });
+
+    // ---- scroll reveal ----
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reduce) {
+      document.querySelectorAll('section').forEach(function (s) { s.classList.add('reveal'); });
+      var rev = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); rev.unobserve(e.target); } });
+      }, { rootMargin: '0px 0px -12% 0px' });
+      document.querySelectorAll('.reveal').forEach(function (s) { rev.observe(s); });
+    }
+  })();
+</script>
+</body>
+</html>

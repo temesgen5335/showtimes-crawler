@@ -34,6 +34,7 @@ ENV PUPPETEER_SKIP_DOWNLOAD=true \
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/public ./public
 COPY package*.json ./
 
 # Run as the unprivileged user that the node image already provides.
