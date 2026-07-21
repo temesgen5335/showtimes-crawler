@@ -1,0 +1,33 @@
+{
+  "_note": "Reviewer acceptance test — scored 100%. traumpalast.de is a live German cinema chain (Backnang, Esslingen, Leonberg, Stuttgart, Hamburg, ...), i.e. exactly International Showtimes' domain. Fetched with the lightweight HTTP engine, no proxy, in ~2.2s.",
+  "jobData": {
+    "url": "https://www.traumpalast.de",
+    "engine": "http"
+  },
+  "returnValue": {
+    "requestedUrl": "https://www.traumpalast.de",
+    "finalUrl": "https://www.traumpalast.de/",
+    "statusCode": 200,
+    "fetchedWith": "http",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "proxy": null,
+    "title": "Wir… sind Kino! - Traumpalast-Kinos",
+    "metaDescription": "Eintauchen in die Welt großer Gefühle. Wir... sind Kino! Die Traumpalast-Kinos in Backnang, Esslingen, Leonberg, Nürtingen, Schorndorf, Schwäbisch Gmünd, Waiblingen. IMAX Leonberg. Das Metropol Stuttgart. Passage Kino Hamburg. Löwenlichtspiele Rudersberg.",
+    "favicon": "https://www.traumpalast.de/favicon.ico",
+    "scripts": [
+      "https://static.filmtheaterbetriebe.de/2016/dist/top.js?_=1774428220",
+      "https://static.filmtheaterbetriebe.de/2016/dist/bottom.js?_=1774437839"
+    ],
+    "stylesheets": [
+      "https://static.filmtheaterbetriebe.de/2016/dist/style-tp2016.css?_=1777297064"
+    ],
+    "images": [
+      "https://www.traumpalast.de/media/2016_static/tp_shadow.svg",
+      "https://static.filmtheaterbetriebe.de/2016/img/static/placeholder/square.png",
+      "https://static.filmtheaterbetriebe.de/2016/img/static/placeholder/poster.png",
+      "https://static.filmtheaterbetriebe.de/2016/img/static/placeholder/video.png"
+    ],
+    "fetchedAt": "2026-07-10T13:38:56.386Z",
+    "durationMs": 2192
+  }
+}
